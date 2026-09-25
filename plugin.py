@@ -186,11 +186,19 @@ class GoodWeSEMSPlugin:
                 if len(inverter['fault_message']) > 0:
                     Domoticz.Log("Fault message from GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverter['fault_message']) + "'")
                     logging.info("Fault message from GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverter['fault_message']) + "'")
-                Domoticz.Log("Status of GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverter["status"]) + ' ' + self.goodWeAccount.INVERTER_STATE[inverter["status"]] + "'")
-                logging.info("Status of GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverter["status"]) + ' ' + self.goodWeAccount.INVERTER_STATE[inverter["status"]] + "'")
-                UpdateDevice(inverter["sn"], theInverter.inverterStateUnit, inverter["status"]+1, str((inverter["status"]+2)*10), AlwaysUpdate=True)
-                #Devices[inverter["sn"]].Unit[theInverter.inverterStateUnit].Update(nValue=inverter["status"]+1, sValue=str((inverter["status"]+2)*10))
-                if self.goodWeAccount.INVERTER_STATE[inverter["status"]] == 'generating':
+                try:
+                    inverterStatus = int(inverter["status"])
+                except (TypeError, ValueError, KeyError):
+                    inverterStatus = -1
+                effectiveStatus = inverterStatus if inverterStatus in self.goodWeAccount.INVERTER_STATE else 2
+                statusText = self.goodWeAccount.INVERTER_STATE.get(inverterStatus, "unknown")
+                if statusText == "unknown":
+                    logging.info("Unknown inverter status '%s' for inverter '%s', mapped to error state for selector update", str(inverter.get("status")), inverter["sn"])
+                Domoticz.Log("Status of GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverterStatus) + ' ' + statusText + "'")
+                logging.info("Status of GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverterStatus) + ' ' + statusText + "'")
+                UpdateDevice(inverter["sn"], theInverter.inverterStateUnit, effectiveStatus+1, str((effectiveStatus+2)*10), AlwaysUpdate=True)
+                #Devices[inverter["sn"]].Unit[theInverter.inverterStateUnit].Update(nValue=effectiveStatus+1, sValue=str((effectiveStatus+2)*10))
+                if self.goodWeAccount.INVERTER_STATE.get(effectiveStatus) == 'generating':
                     logging.debug("inverter generating, log temp")
                     UpdateDevice(inverter["sn"],theInverter.inverterTemperatureUnit, 0, str(inverter["tempperature"]))
                     UpdateDevice(inverter["sn"],theInverter.outputFreq1Unit, 0, str(inverter["d"]["fac1"]))
