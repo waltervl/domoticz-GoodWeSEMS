@@ -786,13 +786,15 @@ class GoodWeSEMSPlus(GoodWe):
                     filtered_roots.append(root)
                 root_nodes = filtered_roots
 
+            page_inverter_count = 0
             for node in self._collect_centralized_nodes(root_nodes):
                 inverter = self._normalize_centralized_inverter(node)
                 if inverter is not None:
                     normalized.append(inverter)
+                    page_inverter_count += 1
 
             stop_for_total = total > 0 and total <= current * size
-            stop_for_short_page = total <= 0 and len(nodes) < size
+            stop_for_short_page = total <= 0 and page_inverter_count < size
             if stop_for_total or stop_for_short_page or not nodes:
                 break
             current += 1
