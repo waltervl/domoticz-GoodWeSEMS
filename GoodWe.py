@@ -31,6 +31,7 @@ import exceptions
 import logging
 import hashlib
 import base64
+from collections import deque
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
@@ -706,9 +707,9 @@ class GoodWeSEMSPlus(GoodWe):
         return inverter
 
     def _collect_centralized_nodes(self, nodes):
-        queue = list(nodes)
+        queue = deque(nodes)
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             if not isinstance(node, dict):
                 continue
             yield node
@@ -725,45 +726,63 @@ class GoodWeSEMSPlus(GoodWe):
             if sig:
                 headers["X-Signature"] = sig
 
-        payload = {"deviceTypeList": ["INVERTER"], "current": 1, "size": 10}
-        try:
-            r = requests.post(api_base + url_part, headers=headers, json=payload, timeout=10)
-            r.raise_for_status()
-            json_response = r.json()
-        except Exception as exp:
-            logging.error("getWebCentralizedPageInverters request failed: %s", exp)
-            Domoticz.Error("getWebCentralizedPageInverters request failed: " + str(exp))
-            return []
-
-        if not isinstance(json_response, dict):
-            return []
-        if json_response.get("code") not in _SuccessCodes:
-            logging.info(
-                "SEMS+ centralized/page returned non-success code: %s",
-                json_response.get("code"),
-            )
-            return []
-
-        data = json_response.get("data")
-        if not isinstance(data, dict):
-            return []
-        nodes = data.get("dataList")
-        if not isinstance(nodes, list):
-            return []
-
         normalized = []
-        for node in self._collect_centralized_nodes(nodes):
-            node_station_id = (
-                node.get("powerStationId")
-                or node.get("pwId")
-                or node.get("stationId")
-                or node.get("id")
-            )
-            if powerStationId and isinstance(node_station_id, str) and node_station_id and node_station_id != powerStationId:
-                continue
-            inverter = self._normalize_centralized_inverter(node)
-            if inverter is not None:
-                normalized.append(inverter)
+        current = 1
+        size = 50
+        total = None
+
+        while True:
+            payload = {"deviceTypeList": ["INVERTER"], "current": current, "size": size}
+            try:
+                r = requests.post(api_base + url_part, headers=headers, json=payload, timeout=10)
+                r.raise_for_status()
+                json_response = r.json()
+            except Exception as exp:
+                logging.error("getWebCentralizedPageInverters request failed: %s", exp)
+                Domoticz.Error("getWebCentralizedPageInverters request failed: " + str(exp))
+                return []
+
+            if not isinstance(json_response, dict):
+                return []
+            if json_response.get("code") not in _SuccessCodes:
+                logging.info(
+                    "SEMS+ centralized/page returned non-success code: %s",
+                    json_response.get("code"),
+                )
+                return []
+
+            data = json_response.get("data")
+            if not isinstance(data, dict):
+                return []
+            nodes = data.get("dataList")
+            if not isinstance(nodes, list):
+                return []
+
+            if total is None:
+                total = data.get("total")
+                if total is None:
+                    total = data.get("totalCount")
+                total = self._safe_int(total, 0)
+
+            for node in self._collect_centralized_nodes(nodes):
+                node_station_id = (
+                    node.get("powerStationId")
+                    or node.get("pwId")
+                    or node.get("stationId")
+                    or node.get("id")
+                )
+                if powerStationId and isinstance(node_station_id, str) and node_station_id and node_station_id != powerStationId:
+                    continue
+                inverter = self._normalize_centralized_inverter(node)
+                if inverter is not None:
+                    normalized.append(inverter)
+
+            if total <= current * size or not nodes:
+                break
+            current += 1
+            if current > 20:
+                logging.info("SEMS+ centralized/page pagination capped at 20 pages")
+                break
         return normalized
 
     def getWebInverterDevices(self, powerStationId):

@@ -7,7 +7,7 @@ This plugin was created by Dylian94 ([/dylian94/domoticz-GoodWeSEMS](https://git
 
 Important update note (v5)
 ----------------------
-Per version 5 (May 2026), I've updated the plugin to use the new SEMS+ server as default, as the old server will be deprecated. When updating, make sure the check the 'Use SEMS+ API' setting is set to 'Yes'.
+Per version 5 (May 2026), I've updated the plugin to use the new SEMS+ server as default, as the old server will be deprecated. When updating, make sure the 'Use SEMS+ API' setting is set to 'Yes'.
 
 SEMS+ endpoint note (issue #36)
 ----------------------
