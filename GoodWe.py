@@ -947,9 +947,15 @@ class GoodWeSEMSPlus(GoodWe):
 
     def getWebData(self, powerStationId):
         # Build the legacy-shaped data object from SEMS+ Web responses
+        station_info = {
+            "powerstation_id": powerStationId,
+            "stationname": "",
+            "address": "",
+            "status": 0,
+        }
         centralized_inverters = self.getWebCentralizedPageInverters(powerStationId)
         if centralized_inverters:
-            return {"inverter": centralized_inverters}
+            return {"info": station_info, "inverter": centralized_inverters}
 
         inverters = []
         devices = self.getWebInverterDevices(powerStationId)
@@ -979,7 +985,7 @@ class GoodWeSEMSPlus(GoodWe):
                 inverter['pv_input_4'] = telemetry.get('pv_input_4')
             # counters may have etotal in kWh; leave as-is
             inverters.append(inverter)
-        return {'inverter': inverters}
+        return {'info': station_info, 'inverter': inverters}
 
     def setInverterStatus(self, stationId, inverterSn, mode):
         url = _PowerControlURLPart

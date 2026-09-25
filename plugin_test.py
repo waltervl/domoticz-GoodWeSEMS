@@ -187,7 +187,10 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
         with patch.object(
             self.account,
             "getWebData",
-            return_value={"inverter": [{"sn": "INV1", "status": 1}]},
+            return_value={
+                "info": {"powerstation_id": "station-1", "stationname": "", "address": "", "status": 0},
+                "inverter": [{"sn": "INV1", "status": 1}],
+            },
         ):
             result = self.account.stationDataRequest("station-1")
 
@@ -308,6 +311,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
 
         self.assertEqual(result["inverter"][0]["sn"], "INV2")
         self.assertEqual(result["inverter"][0]["etotal"], 10.0)
+        self.assertEqual(result["info"]["powerstation_id"], "station-1")
 
     def test_web_data_falls_back_when_centralized_request_fails(self):
         with patch("GoodWe.requests.post", side_effect=Exception("network error")), patch.object(
@@ -324,6 +328,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
             result = self.account.getWebData("station-1")
 
         self.assertEqual(result["inverter"][0]["sn"], "INV3")
+        self.assertIn("info", result)
 
     def test_web_data_keeps_centralized_results_without_pv_input(self):
         with patch.object(
@@ -339,6 +344,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
 
         self.assertEqual(result["inverter"][0]["sn"], "INV4")
         self.assertNotIn("pv_input_1", result["inverter"][0])
+        self.assertEqual(result["info"]["powerstation_id"], "station-1")
         mock_legacy_devices.assert_not_called()
 
 
