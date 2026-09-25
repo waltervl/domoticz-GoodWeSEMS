@@ -950,6 +950,47 @@ class GoodWeSEMSPlus(GoodWe):
                     counters[tgt] = v
         return counters
 
+    def getWebStationFlow(self, powerStationId):
+        url_part = f"/sems-plant/api/stations/flow?stationId={powerStationId}"
+        api_base = self._resolve_api_base_for_url_part(self.base_url, url_part)
+        headers = self.apiRequestHeadersV2()
+        if isinstance(self.token, dict) and self.token.get("client") == "semsPlusWeb":
+            sig = self._generate_signature(self.token)
+            if sig:
+                headers["X-Signature"] = sig
+        try:
+            r = requests.get(api_base + url_part, headers=headers, timeout=10)
+            r.raise_for_status()
+            json_response = r.json()
+        except Exception as exp:
+            logging.error("getWebStationFlow request failed: %s", exp)
+            Domoticz.Error("getWebStationFlow request failed: " + str(exp))
+            return {}
+
+        if not isinstance(json_response, dict):
+            return {}
+        if "code" in json_response and json_response.get("code") not in _SuccessCodes:
+            logging.info("getWebStationFlow returned non-success code: %s", json_response.get("code"))
+            return {}
+        flow = json_response.get("data", json_response)
+        return flow if isinstance(flow, dict) else {}
+
+    def _apply_single_inverter_station_flow_fallback(self, powerStationId, inverters):
+        if not isinstance(inverters, list) or len(inverters) != 1 or not isinstance(inverters[0], dict):
+            return
+        flow = self.getWebStationFlow(powerStationId)
+        if not isinstance(flow, dict) or not flow:
+            return
+        inverter = inverters[0]
+        output_power = self._safe_float(inverter.get("output_power"), 0.0)
+        if output_power <= 0:
+            pac = self._safe_float(flow.get("pAc"), None)
+            if pac is not None:
+                inverter["output_power"] = pac * 1000
+        pgrid = self._safe_float(flow.get("pGrid"), None)
+        if pgrid is not None:
+            inverter["pmeter"] = pgrid * 1000
+
     def getWebData(self, powerStationId):
         # Build the legacy-shaped data object from SEMS+ Web responses
         station_info = {
@@ -960,6 +1001,7 @@ class GoodWeSEMSPlus(GoodWe):
         }
         centralized_inverters = self.getWebCentralizedPageInverters(powerStationId)
         if centralized_inverters:
+            self._apply_single_inverter_station_flow_fallback(powerStationId, centralized_inverters)
             return {"info": station_info, "inverter": centralized_inverters}
 
         inverters = []
@@ -987,6 +1029,18 @@ class GoodWeSEMSPlus(GoodWe):
             # plugin expects keys like 'sn','status','fault_message','tempperature','d','output_current','output_voltage','output_power','etotal','pv_input_1'
             inverter.setdefault('fault_message', '')
             inverter.setdefault('status', device.get('status', 0))
+            inverter.setdefault('tempperature', 0.0)
+            inverter.setdefault('output_current', 0.0)
+            inverter.setdefault('output_voltage', 0.0)
+            inverter.setdefault('output_power', 0.0)
+            inverter.setdefault('eday', 0.0)
+            inverter.setdefault('etotal', 0.0)
+            inverter.setdefault('eweek', 0.0)
+            inverter.setdefault('thismonthetotle', 0.0)
+            inverter.setdefault('eyear', 0.0)
+            if not isinstance(inverter.get("d"), dict):
+                inverter["d"] = {}
+            inverter["d"].setdefault("fac1", 0.0)
             # map pv inputs
             if 'pv_input_1' in telemetry:
                 inverter['pv_input_1'] = telemetry.get('pv_input_1')
@@ -998,6 +1052,7 @@ class GoodWeSEMSPlus(GoodWe):
                 inverter['pv_input_4'] = telemetry.get('pv_input_4')
             # counters may have etotal in kWh; leave as-is
             inverters.append(inverter)
+        self._apply_single_inverter_station_flow_fallback(powerStationId, inverters)
         return {'info': station_info, 'inverter': inverters}
 
     def setInverterStatus(self, stationId, inverterSn, mode):

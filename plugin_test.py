@@ -306,6 +306,8 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
             },
         ), patch.object(
             self.account, "getWebInverterTelecounting", return_value={"etotal": 10.0}
+        ), patch.object(
+            self.account, "getWebStationFlow", return_value={}
         ):
             result = self.account.getWebData("station-1")
 
@@ -324,6 +326,8 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
             return_value={"output_power": 1200.0, "pv_input_1": "120.0V/2.0A"},
         ), patch.object(
             self.account, "getWebInverterTelecounting", return_value={"etotal": 20.0}
+        ), patch.object(
+            self.account, "getWebStationFlow", return_value={}
         ):
             result = self.account.getWebData("station-1")
 
@@ -339,13 +343,58 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
             self.account,
             "getWebInverterDevices",
             return_value=[{"sn": "INV4", "deviceType": "INVERTER", "status": 1}],
-        ) as mock_legacy_devices:
+        ) as mock_legacy_devices, patch.object(
+            self.account, "getWebStationFlow", return_value={}
+        ):
             result = self.account.getWebData("station-1")
 
         self.assertEqual(result["inverter"][0]["sn"], "INV4")
         self.assertNotIn("pv_input_1", result["inverter"][0])
         self.assertEqual(result["info"]["powerstation_id"], "station-1")
         mock_legacy_devices.assert_not_called()
+
+    def test_web_data_keeps_discovered_inverter_without_telemetry(self):
+        with patch.object(
+            self.account, "getWebCentralizedPageInverters", return_value=[]
+        ), patch.object(
+            self.account,
+            "getWebInverterDevices",
+            return_value=[{"sn": "INV5", "deviceType": "INVERTER", "status": 1}],
+        ), patch.object(
+            self.account, "getWebInverterTelemetry", return_value={}
+        ), patch.object(
+            self.account, "getWebInverterTelecounting", return_value={}
+        ), patch.object(
+            self.account, "getWebStationFlow", return_value={}
+        ):
+            result = self.account.getWebData("station-1")
+
+        inverter = result["inverter"][0]
+        self.assertEqual(inverter["sn"], "INV5")
+        self.assertEqual(inverter["output_power"], 0.0)
+        self.assertEqual(inverter["output_voltage"], 0.0)
+        self.assertEqual(inverter["output_current"], 0.0)
+        self.assertEqual(inverter["etotal"], 0.0)
+
+    def test_single_inverter_uses_station_flow_power_fallback(self):
+        with patch.object(
+            self.account, "getWebCentralizedPageInverters", return_value=[]
+        ), patch.object(
+            self.account,
+            "getWebInverterDevices",
+            return_value=[{"sn": "INV6", "deviceType": "INVERTER", "status": 1}],
+        ), patch.object(
+            self.account, "getWebInverterTelemetry", return_value={}
+        ), patch.object(
+            self.account, "getWebInverterTelecounting", return_value={}
+        ), patch.object(
+            self.account, "getWebStationFlow", return_value={"pAc": "1.2", "pGrid": "-0.4"}
+        ):
+            result = self.account.getWebData("station-1")
+
+        inverter = result["inverter"][0]
+        self.assertEqual(inverter["output_power"], 1200.0)
+        self.assertEqual(inverter["pmeter"], -400.0)
 
 
 def main():
