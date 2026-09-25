@@ -639,8 +639,6 @@ class GoodWeSEMSPlus(GoodWe):
             value = self._format_pv_input(voltage, current)
             if value:
                 pv_inputs[key] = value
-        if "pv_input_1" not in pv_inputs:
-            pv_inputs["pv_input_1"] = "0.0V/0.0A"
         return pv_inputs
 
     def _normalize_centralized_inverter(self, source):
@@ -673,15 +671,18 @@ class GoodWeSEMSPlus(GoodWe):
         else:
             output_power = self._safe_float(output_power)
 
+        temperature = self._safe_float(
+            source.get("tempperature", source.get("temperature", source.get("Temperature"))),
+            0.0,
+        )
+
         inverter = {
             "sn": sn,
             "name": source.get("name", source.get("deviceName", sn)),
             "status": self._safe_int(status, 0),
             "fault_message": source.get("fault_message", source.get("faultMessage", "")) or "",
-            "tempperature": self._safe_float(
-                source.get("tempperature", source.get("temperature", source.get("Temperature"))),
-                0.0,
-            ),
+            "temperature": temperature,
+            "tempperature": temperature,
             "d": {"fac1": self._safe_float(fac1, 0.0)},
             "output_current": self._safe_float(
                 source.get("output_current", source.get("iac", source.get("Iac"))), 0.0
@@ -768,20 +769,31 @@ class GoodWeSEMSPlus(GoodWe):
                     total = data.get("totalCount")
                 total = self._safe_int(total, 0)
 
-            for node in self._collect_centralized_nodes(nodes):
-                node_station_id = (
-                    node.get("powerStationId")
-                    or node.get("pwId")
-                    or node.get("stationId")
-                    or node.get("id")
-                )
-                if powerStationId and isinstance(node_station_id, str) and node_station_id and node_station_id != powerStationId:
-                    continue
+            root_nodes = nodes
+            if powerStationId:
+                filtered_roots = []
+                for root in nodes:
+                    if not isinstance(root, dict):
+                        continue
+                    root_station_id = (
+                        root.get("powerStationId")
+                        or root.get("pwId")
+                        or root.get("stationId")
+                        or root.get("id")
+                    )
+                    if isinstance(root_station_id, str) and root_station_id and root_station_id != powerStationId:
+                        continue
+                    filtered_roots.append(root)
+                root_nodes = filtered_roots
+
+            for node in self._collect_centralized_nodes(root_nodes):
                 inverter = self._normalize_centralized_inverter(node)
                 if inverter is not None:
                     normalized.append(inverter)
 
-            if total <= current * size or not nodes:
+            stop_for_total = total > 0 and total <= current * size
+            stop_for_short_page = total <= 0 and len(nodes) < size
+            if stop_for_total or stop_for_short_page or not nodes:
                 break
             current += 1
             if current > _WebCentralizedMaxPages:
@@ -931,8 +943,12 @@ class GoodWeSEMSPlus(GoodWe):
     def getWebData(self, powerStationId):
         # Build the legacy-shaped data object from SEMS+ Web responses
         centralized_inverters = self.getWebCentralizedPageInverters(powerStationId)
-        if centralized_inverters:
+        if centralized_inverters and all("pv_input_1" in inverter for inverter in centralized_inverters):
             return {"inverter": centralized_inverters}
+        if centralized_inverters:
+            logging.info(
+                "SEMS+ centralized/page response missing pv_input_1 for one or more inverters, falling back to legacy web endpoints"
+            )
 
         inverters = []
         devices = self.getWebInverterDevices(powerStationId)

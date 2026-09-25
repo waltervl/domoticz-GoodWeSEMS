@@ -307,6 +307,42 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
         self.assertEqual(result["inverter"][0]["sn"], "INV2")
         self.assertEqual(result["inverter"][0]["etotal"], 10.0)
 
+    def test_web_data_falls_back_when_centralized_request_fails(self):
+        with patch("GoodWe.requests.post", side_effect=Exception("network error")), patch.object(
+            self.account,
+            "getWebInverterDevices",
+            return_value=[{"sn": "INV3", "deviceType": "INVERTER", "status": 1}],
+        ), patch.object(
+            self.account,
+            "getWebInverterTelemetry",
+            return_value={"output_power": 1200.0, "pv_input_1": "120.0V/2.0A"},
+        ), patch.object(
+            self.account, "getWebInverterTelecounting", return_value={"etotal": 20.0}
+        ):
+            result = self.account.getWebData("station-1")
+
+        self.assertEqual(result["inverter"][0]["sn"], "INV3")
+
+    def test_web_data_falls_back_when_centralized_data_lacks_pv_input(self):
+        with patch.object(
+            self.account,
+            "getWebCentralizedPageInverters",
+            return_value=[{"sn": "INV4", "status": 1, "output_power": 1000.0}],
+        ), patch.object(
+            self.account,
+            "getWebInverterDevices",
+            return_value=[{"sn": "INV4", "deviceType": "INVERTER", "status": 1}],
+        ), patch.object(
+            self.account,
+            "getWebInverterTelemetry",
+            return_value={"output_power": 1000.0, "pv_input_1": "150.0V/2.0A"},
+        ), patch.object(
+            self.account, "getWebInverterTelecounting", return_value={"etotal": 30.0}
+        ):
+            result = self.account.getWebData("station-1")
+
+        self.assertEqual(result["inverter"][0]["pv_input_1"], "150.0V/2.0A")
+
 
 def main():
     logging.basicConfig(format='%(asctime)s - %(levelname)-8s - %(filename)-18s - %(message)s', filename="goodwe_test.log",level=logging.DEBUG)
