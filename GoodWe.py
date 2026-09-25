@@ -762,6 +762,10 @@ class GoodWeSEMSPlus(GoodWe):
             nodes = data.get("dataList")
             if not isinstance(nodes, list):
                 return []
+            page_record_count = data.get("records")
+            if page_record_count is None:
+                page_record_count = data.get("count")
+            page_record_count = self._safe_int(page_record_count, len(nodes))
 
             if total is None:
                 total = data.get("total")
@@ -786,15 +790,13 @@ class GoodWeSEMSPlus(GoodWe):
                     filtered_roots.append(root)
                 root_nodes = filtered_roots
 
-            page_inverter_count = 0
             for node in self._collect_centralized_nodes(root_nodes):
                 inverter = self._normalize_centralized_inverter(node)
                 if inverter is not None:
                     normalized.append(inverter)
-                    page_inverter_count += 1
 
             stop_for_total = total > 0 and total <= current * size
-            stop_for_short_page = total <= 0 and page_inverter_count < size
+            stop_for_short_page = total <= 0 and page_record_count < size
             if stop_for_total or stop_for_short_page or not nodes:
                 break
             current += 1
@@ -945,12 +947,8 @@ class GoodWeSEMSPlus(GoodWe):
     def getWebData(self, powerStationId):
         # Build the legacy-shaped data object from SEMS+ Web responses
         centralized_inverters = self.getWebCentralizedPageInverters(powerStationId)
-        if centralized_inverters and all("pv_input_1" in inverter for inverter in centralized_inverters):
-            return {"inverter": centralized_inverters}
         if centralized_inverters:
-            logging.info(
-                "SEMS+ centralized/page response missing pv_input_1 for one or more inverters, falling back to legacy web endpoints"
-            )
+            return {"inverter": centralized_inverters}
 
         inverters = []
         devices = self.getWebInverterDevices(powerStationId)

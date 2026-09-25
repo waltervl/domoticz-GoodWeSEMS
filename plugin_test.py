@@ -323,7 +323,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
 
         self.assertEqual(result["inverter"][0]["sn"], "INV3")
 
-    def test_web_data_falls_back_when_centralized_data_lacks_pv_input(self):
+    def test_web_data_keeps_centralized_results_without_pv_input(self):
         with patch.object(
             self.account,
             "getWebCentralizedPageInverters",
@@ -332,16 +332,12 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
             self.account,
             "getWebInverterDevices",
             return_value=[{"sn": "INV4", "deviceType": "INVERTER", "status": 1}],
-        ), patch.object(
-            self.account,
-            "getWebInverterTelemetry",
-            return_value={"output_power": 1000.0, "pv_input_1": "150.0V/2.0A"},
-        ), patch.object(
-            self.account, "getWebInverterTelecounting", return_value={"etotal": 30.0}
-        ):
+        ) as mock_legacy_devices:
             result = self.account.getWebData("station-1")
 
-        self.assertEqual(result["inverter"][0]["pv_input_1"], "150.0V/2.0A")
+        self.assertEqual(result["inverter"][0]["sn"], "INV4")
+        self.assertNotIn("pv_input_1", result["inverter"][0])
+        mock_legacy_devices.assert_not_called()
 
 
 def main():

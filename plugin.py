@@ -198,13 +198,16 @@ class GoodWeSEMSPlugin:
                 UpdateDevice(inverter["sn"], theInverter.outputCurrentUnit, 0, str(inverter["output_current"]), AlwaysUpdate=True)
                 UpdateDevice(inverter["sn"], theInverter.outputVoltageUnit, 0, str(inverter["output_voltage"]), AlwaysUpdate=True)
                 UpdateDevice(inverter["sn"], theInverter.outputPowerUnit, 0, str(inverter["output_power"]) + ";" + str(inverter["etotal"] * 1000), AlwaysUpdate=True)
-                inputVoltage,inputAmps = inverter["pv_input_1"].split('/')
-                inputPower = float(inputVoltage[:-1]) * float(inputAmps[:-1]) #calculate the power based on P = I * V in Watt
-                UpdateDevice(inverter["sn"], theInverter.inputVoltage1Unit, 0, inputVoltage, AlwaysUpdate=True)
-                UpdateDevice(inverter["sn"], theInverter.inputAmps1Unit, 0, inputAmps, AlwaysUpdate=True)
+                if "pv_input_1" in inverter and "/" in inverter["pv_input_1"]:
+                    inputVoltage,inputAmps = inverter["pv_input_1"].split('/')
+                    inputPower = float(inputVoltage[:-1]) * float(inputAmps[:-1]) #calculate the power based on P = I * V in Watt
+                    UpdateDevice(inverter["sn"], theInverter.inputVoltage1Unit, 0, inputVoltage, AlwaysUpdate=True)
+                    UpdateDevice(inverter["sn"], theInverter.inputAmps1Unit, 0, inputAmps, AlwaysUpdate=True)
 
-                newCounter = calculateNewEnergy(inverter["sn"], theInverter.inputPower1Unit, inputPower)
-                UpdateDevice(inverter["sn"],theInverter.inputPower1Unit, 0, "{:5.1f};{:10.2f}".format(inputPower, newCounter), AlwaysUpdate=True)
+                    newCounter = calculateNewEnergy(inverter["sn"], theInverter.inputPower1Unit, inputPower)
+                    UpdateDevice(inverter["sn"],theInverter.inputPower1Unit, 0, "{:5.1f};{:10.2f}".format(inputPower, newCounter), AlwaysUpdate=True)
+                else:
+                    logging.info("Skipping PV input 1 update for inverter %s because pv_input_1 is missing", inverter["sn"])
 
                 if "pv_input_2" in inverter:
                     logging.debug("Second string found")
