@@ -762,16 +762,20 @@ class GoodWeSEMSPlus(GoodWe):
             nodes = data.get("dataList")
             if not isinstance(nodes, list):
                 return []
-            page_record_count = data.get("records")
-            if page_record_count is None:
-                page_record_count = data.get("count")
-            page_record_count = self._safe_int(page_record_count, len(nodes))
-
+            raw_page_record_count = data.get("records")
+            if raw_page_record_count is None:
+                raw_page_record_count = data.get("count")
             if total is None:
                 total = data.get("total")
                 if total is None:
                     total = data.get("totalCount")
                 total = self._safe_int(total, 0)
+
+            total_for_page = self._safe_int(total, 0)
+            if raw_page_record_count is None and powerStationId and total_for_page > 0:
+                page_record_count = size
+            else:
+                page_record_count = self._safe_int(raw_page_record_count, len(nodes))
 
             root_nodes = nodes
             if powerStationId:
@@ -795,8 +799,8 @@ class GoodWeSEMSPlus(GoodWe):
                 if inverter is not None:
                     normalized.append(inverter)
 
-            stop_for_total = total > 0 and total <= current * size
-            stop_for_short_page = total <= 0 and page_record_count < size
+            stop_for_total = total_for_page > 0 and total_for_page <= current * size and (not powerStationId or raw_page_record_count is None)
+            stop_for_short_page = (total_for_page <= 0 or (powerStationId and raw_page_record_count is not None)) and page_record_count < size
             if stop_for_total or stop_for_short_page or not nodes:
                 break
             current += 1
