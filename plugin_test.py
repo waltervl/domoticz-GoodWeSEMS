@@ -237,6 +237,50 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
         self.assertEqual(inverter["pv_input_1"], "350.0V/4.2A")
         self.assertEqual(inverter["etotal"], 1234.5)
 
+    @patch("GoodWe.requests.post")
+    def test_centralized_page_pagination_merges_multiple_pages(self, mock_post):
+        mock_post.side_effect = [
+            self._MockResponse(
+                {
+                    "code": "00000",
+                    "data": {
+                        "total": 60,
+                        "dataList": [
+                            {
+                                "id": "station-1",
+                                "children": [
+                                    {"deviceType": "INVERTER", "sn": "INV-A", "status": 1}
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ),
+            self._MockResponse(
+                {
+                    "code": "00000",
+                    "data": {
+                        "total": 60,
+                        "dataList": [
+                            {
+                                "id": "station-1",
+                                "children": [
+                                    {"deviceType": "INVERTER", "sn": "INV-B", "status": 0}
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ),
+        ]
+
+        result = self.account.getWebCentralizedPageInverters("station-1")
+
+        self.assertEqual([inv["sn"] for inv in result], ["INV-A", "INV-B"])
+        self.assertEqual(mock_post.call_count, 2)
+        first_payload = mock_post.call_args_list[0].kwargs["json"]
+        self.assertEqual(first_payload["powerStationId"], "station-1")
+
     def test_web_data_falls_back_to_legacy_web_endpoints(self):
         with patch.object(
             self.account, "getWebCentralizedPageInverters", return_value=[]

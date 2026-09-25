@@ -58,6 +58,8 @@ _DefaultHeaders = {
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
 _LegacyApiFallback = "https://eu.semsportal.com/api"
 _WebCentralizedPageURLPart = "/sems-plant/api/web/device/centralized/page"
+# Safety guard to avoid unbounded pagination when API total metadata is missing or inconsistent.
+_WebCentralizedMaxPages = 20
 
 
 def _redacted_token_for_log(token_data):
@@ -733,6 +735,8 @@ class GoodWeSEMSPlus(GoodWe):
 
         while True:
             payload = {"deviceTypeList": ["INVERTER"], "current": current, "size": size}
+            if powerStationId:
+                payload["powerStationId"] = powerStationId
             try:
                 r = requests.post(api_base + url_part, headers=headers, json=payload, timeout=10)
                 r.raise_for_status()
@@ -780,8 +784,11 @@ class GoodWeSEMSPlus(GoodWe):
             if total <= current * size or not nodes:
                 break
             current += 1
-            if current > 20:
-                logging.info("SEMS+ centralized/page pagination capped at 20 pages")
+            if current > _WebCentralizedMaxPages:
+                logging.info(
+                    "SEMS+ centralized/page pagination capped at %s pages",
+                    _WebCentralizedMaxPages,
+                )
                 break
         return normalized
 
