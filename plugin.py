@@ -182,6 +182,7 @@ class GoodWeSEMSPlugin:
                 self.createDevices(inverter["sn"])
                 
                 theInverter = theStation.inverters[inverter["sn"]]
+                logging.debug("SEMS+ inverter payload (SN: %s): %s", inverter["sn"], str(inverter))
 
                 if len(inverter['fault_message']) > 0:
                     Domoticz.Log("Fault message from GoodWe inverter (SN: " + inverter["sn"] + "): '" + str(inverter['fault_message']) + "'")
@@ -241,9 +242,18 @@ class GoodWeSEMSPlugin:
                     inputPower = float(inputVoltage[:-1]) * float(inputAmps[:-1])
                     newCounter = calculateNewEnergy(inverter["sn"], theInverter.inputPower4Unit, inputPower)
                     UpdateDevice(inverter["sn"],theInverter.inputPower4Unit, 0, "{:5.1f};{:10.2f}".format(inputPower, newCounter), AlwaysUpdate=True)
-                #log data of battery
-                Domoticz.Debug("Battery values: battery: '{0}', bms_status: '{1}', battery_power: '{2}'".format(inverter["battery"],inverter["bms_status"],inverter["battery_power"]))
-                logging.debug("Battery values: battery: '{0}', bms_status: '{1}', battery_power: '{2}'".format(inverter["battery"],inverter["bms_status"],inverter["battery_power"]))
+                #log battery data only when values are present/meaningful
+                battery = inverter.get("battery")
+                bms_status = inverter.get("bms_status")
+                battery_power = inverter.get("battery_power")
+                hasBatteryData = (
+                    battery not in (None, "", "0", 0, "0.0")
+                    or bms_status not in (None, "")
+                    or battery_power not in (None, "", "0", 0, "0.0")
+                )
+                if hasBatteryData:
+                    Domoticz.Debug("Battery values: battery: '{0}', bms_status: '{1}', battery_power: '{2}'".format(battery, bms_status, battery_power))
+                    logging.debug("Battery values: battery: '{0}', bms_status: '{1}', battery_power: '{2}'".format(battery, bms_status, battery_power))
 
     def createDevices(self, serialNumber):
         #create domoticz devices

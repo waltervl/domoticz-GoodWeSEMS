@@ -794,6 +794,11 @@ class GoodWeSEMSPlus(GoodWe):
             for node in self._collect_centralized_nodes(root_nodes):
                 inverter = self._normalize_centralized_inverter(node)
                 if inverter is not None:
+                    logging.debug(
+                        "SEMS+ centralized raw/normalized inverter node: raw=%s normalized=%s",
+                        json.dumps(node, default=str),
+                        json.dumps(inverter, default=str),
+                    )
                     normalized.append(inverter)
 
             stop_for_total = total_for_page > 0 and total_for_page <= current * size and (not powerStationId or raw_page_record_count is None)
@@ -970,6 +975,14 @@ class GoodWeSEMSPlus(GoodWe):
             inverter.update(device)
             inverter.update(telemetry)
             inverter.update(counters)
+            logging.debug(
+                "SEMS+ legacy-web raw inverter data: sn=%s device=%s telemetry=%s counters=%s merged=%s",
+                sn,
+                json.dumps(device, default=str),
+                json.dumps(telemetry, default=str),
+                json.dumps(counters, default=str),
+                json.dumps(inverter, default=str),
+            )
             # Normalize fields expected by legacy code
             # plugin expects keys like 'sn','status','fault_message','tempperature','d','output_current','output_voltage','output_power','etotal','pv_input_1'
             inverter.setdefault('fault_message', '')
