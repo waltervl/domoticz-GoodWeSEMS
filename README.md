@@ -9,6 +9,11 @@ Important update note (v5)
 ----------------------
 Per version 5 (May 2026), I've updated the plugin to use the new SEMS+ server as default, as the old server will be deprecated. When updating, make sure the check the 'Use SEMS+ API' setting is set to 'Yes'.
 
+SEMS+ endpoint note (issue #36)
+----------------------
+To handle recent SEMS+ authorization and API changes, station polling now prefers the SEMS+ `sems-plant/api/web/device/centralized/page` endpoint and normalizes that response to the legacy inverter shape used by the plugin.  
+If centralized/page does not return usable inverter data, the plugin falls back to the existing SEMS+ web all-status/telemetry/telecounting calls. The legacy PowerStation endpoint is still attempted first for compatibility.
+
 Important update note (v4)
 ----------------------
 Per version 4 (November 2023), I've updated the plugin to the Domoticz Extend Framework, which means the device definition is changed. To make sure that you still have your historical sensor data, please read the [wiki](https://github.com/JanJaapKo/domoticz-GoodWeSEMS/wiki).

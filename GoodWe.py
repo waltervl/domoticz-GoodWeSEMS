@@ -56,6 +56,16 @@ _DefaultHeaders = {
 }
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
 _LegacyApiFallback = "https://eu.semsportal.com/api"
+_WebCentralizedPageURLPart = "/sems-plant/api/web/device/centralized/page"
+
+
+def _redacted_token_for_log(token_data):
+    if not isinstance(token_data, dict):
+        return token_data
+    redacted = dict(token_data)
+    if "token" in redacted and redacted["token"]:
+        redacted["token"] = "***"
+    return redacted
 
 try:
     import DomoticzEx as Domoticz
@@ -208,14 +218,17 @@ class GoodWe:
         logging.debug("PowerStation created: '" + powerStation.id + "'")
 
     def apiRequestHeadersV2(self):
-        logging.debug("build apiRequestHeaders with token: '%s'", json.dumps(self.token))
+        logging.debug(
+            "build apiRequestHeaders with token: '%s'",
+            json.dumps(_redacted_token_for_log(self.token)),
+        )
         return {
             'User-Agent': _BrowserUserAgent,
             'token': json.dumps(self.token)
         }
 
     def tokenRequest(self):
-        logging.debug("build tokenRequest with UN: '" + self.Username + "', pwd: '" + self.Password +"'")
+        logging.debug("build tokenRequest with UN: '%s'", self.Username)
         url = '/v2/Common/CrossLogin'
         loginPayload = {
             'account': self.Username,
@@ -458,7 +471,7 @@ class GoodWeSEMSPlus(GoodWe):
             "isChinese": False,
             "isLocal": False,
         }
-        logging.debug("SEMS+ login data "+str(login_data))
+        logging.debug("SEMS+ login data %s", {"account": self.Username, "pwd": "***"})
         logging.debug("SEMS+ header data "+str(_NewLoginHeaders))
         try:
             # Ensure a browser User-Agent is present while preserving endpoint headers
@@ -499,7 +512,10 @@ class GoodWeSEMSPlus(GoodWe):
         return self._extract_login_token(apiResponse, _LegacyApiFallback)
 
     def apiRequestHeadersV2(self):
-        logging.debug("build SEMS+ apiRequestHeaders with token: '%s'", json.dumps(self.token))
+        logging.debug(
+            "build SEMS+ apiRequestHeaders with token: '%s'",
+            json.dumps(_redacted_token_for_log(self.token)),
+        )
         return {
             "User-Agent": _BrowserUserAgent,
             'Content-Type': 'application/json',
@@ -521,7 +537,10 @@ class GoodWeSEMSPlus(GoodWe):
         self.token = token_data
         self.tokenAvailable = True
         self.base_url = self.token.get("api")
-        logging.debug("SEMS+ API Token received: %s", json.dumps(self.token))
+        logging.debug(
+            "SEMS+ API Token received: %s",
+            json.dumps(_redacted_token_for_log(self.token)),
+        )
         return 200
 
     def stationDataRequest(self, stationId):
@@ -548,11 +567,11 @@ class GoodWeSEMSPlus(GoodWe):
             if not data or not isinstance(data.get("inverter"), list) or len(data.get("inverter")) == 0:
                 logging.info("Legacy SEMS monitor endpoint returned no inverter data; using SEMS+ Web fallback")
                 web_data = self.getWebData(stationId)
-                return web_data
+                return {"code": 0, "data": web_data}
         except Exception:
             logging.debug("No usable legacy data, attempting SEMS+ Web fallback")
             web_data = self.getWebData(stationId)
-            return web_data
+            return {"code": 0, "data": web_data}
 
         return apiResponse
 
@@ -579,6 +598,173 @@ class GoodWeSEMSPlus(GoodWe):
                 if isinstance(code, str):
                     factors[code] = factor.get("data")
         return factors
+
+    def _safe_float(self, value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _safe_int(self, value, default=0):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _format_pv_input(self, voltage, current):
+        if voltage is None or current is None:
+            return None
+        return "{:.1f}V/{:.1f}A".format(self._safe_float(voltage), self._safe_float(current))
+
+    def _extract_pv_inputs(self, source):
+        pv_inputs = {}
+        for idx in range(1, 5):
+            key = f"pv_input_{idx}"
+            if isinstance(source.get(key), str) and "/" in source.get(key):
+                pv_inputs[key] = source.get(key)
+                continue
+            voltage = (
+                source.get(f"Vpv{idx}")
+                or source.get(f"vpv{idx}")
+                or source.get(f"MPPT-{idx}:Vpv")
+            )
+            current = (
+                source.get(f"Ipv{idx}")
+                or source.get(f"ipv{idx}")
+                or source.get(f"MPPT-{idx}:Ipv")
+            )
+            value = self._format_pv_input(voltage, current)
+            if value:
+                pv_inputs[key] = value
+        if "pv_input_1" not in pv_inputs:
+            pv_inputs["pv_input_1"] = "0.0V/0.0A"
+        return pv_inputs
+
+    def _normalize_centralized_inverter(self, source):
+        sn = source.get("sn") or source.get("serialNumber") or source.get("inverterSn")
+        if not isinstance(sn, str) or not sn:
+            return None
+
+        status = source.get("status")
+        if status is None:
+            status = source.get("runningStatus")
+        if status is None:
+            status = source.get("workStatus")
+
+        d_data = source.get("d")
+        if not isinstance(d_data, dict):
+            d_data = {}
+        fac1 = d_data.get("fac1")
+        if fac1 is None:
+            fac1 = source.get("fac1")
+        if fac1 is None:
+            fac1 = source.get("fac")
+        if fac1 is None:
+            fac1 = source.get("Fac")
+
+        output_power = source.get("output_power")
+        if output_power is None:
+            output_power = source.get("pAc")
+            if output_power is not None:
+                output_power = self._safe_float(output_power) * 1000
+        else:
+            output_power = self._safe_float(output_power)
+
+        inverter = {
+            "sn": sn,
+            "name": source.get("name", source.get("deviceName", sn)),
+            "status": self._safe_int(status, 0),
+            "fault_message": source.get("fault_message", source.get("faultMessage", "")) or "",
+            "tempperature": self._safe_float(
+                source.get("tempperature", source.get("temperature", source.get("Temperature"))),
+                0.0,
+            ),
+            "d": {"fac1": self._safe_float(fac1, 0.0)},
+            "output_current": self._safe_float(
+                source.get("output_current", source.get("iac", source.get("Iac"))), 0.0
+            ),
+            "output_voltage": self._safe_float(
+                source.get("output_voltage", source.get("vac", source.get("Vac"))), 0.0
+            ),
+            "output_power": self._safe_float(output_power, 0.0),
+            "eday": self._safe_float(
+                source.get("eday", source.get("proToday", source.get("proPvStatsToday"))), 0.0
+            ),
+            "etotal": self._safe_float(
+                source.get("etotal", source.get("proTotal", source.get("proPvStatsTotal"))), 0.0
+            ),
+            "eweek": self._safe_float(source.get("eweek", source.get("proPvStatsWeek")), 0.0),
+            "thismonthetotle": self._safe_float(
+                source.get("thismonthetotle", source.get("proPvStatsMonth")), 0.0
+            ),
+            "eyear": self._safe_float(source.get("eyear", source.get("proPvStatsYear")), 0.0),
+            "battery": source.get("battery", "0"),
+            "bms_status": source.get("bms_status", ""),
+            "battery_power": source.get("battery_power", "0"),
+        }
+        inverter.update(self._extract_pv_inputs(source))
+        return inverter
+
+    def _collect_centralized_nodes(self, nodes):
+        queue = list(nodes)
+        while queue:
+            node = queue.pop(0)
+            if not isinstance(node, dict):
+                continue
+            yield node
+            children = node.get("children")
+            if isinstance(children, list):
+                queue.extend(children)
+
+    def getWebCentralizedPageInverters(self, powerStationId):
+        url_part = _WebCentralizedPageURLPart
+        api_base = self._resolve_api_base_for_url_part(self.base_url, url_part)
+        headers = self.apiRequestHeadersV2()
+        if isinstance(self.token, dict) and self.token.get("client") == "semsPlusWeb":
+            sig = self._generate_signature(self.token)
+            if sig:
+                headers["X-Signature"] = sig
+
+        payload = {"deviceTypeList": ["INVERTER"], "current": 1, "size": 10}
+        try:
+            r = requests.post(api_base + url_part, headers=headers, json=payload, timeout=10)
+            r.raise_for_status()
+            json_response = r.json()
+        except Exception as exp:
+            logging.error("getWebCentralizedPageInverters request failed: %s", exp)
+            Domoticz.Error("getWebCentralizedPageInverters request failed: " + str(exp))
+            return []
+
+        if not isinstance(json_response, dict):
+            return []
+        if json_response.get("code") not in _SuccessCodes:
+            logging.info(
+                "SEMS+ centralized/page returned non-success code: %s",
+                json_response.get("code"),
+            )
+            return []
+
+        data = json_response.get("data")
+        if not isinstance(data, dict):
+            return []
+        nodes = data.get("dataList")
+        if not isinstance(nodes, list):
+            return []
+
+        normalized = []
+        for node in self._collect_centralized_nodes(nodes):
+            node_station_id = (
+                node.get("powerStationId")
+                or node.get("pwId")
+                or node.get("stationId")
+                or node.get("id")
+            )
+            if powerStationId and isinstance(node_station_id, str) and node_station_id and node_station_id != powerStationId:
+                continue
+            inverter = self._normalize_centralized_inverter(node)
+            if inverter is not None:
+                normalized.append(inverter)
+        return normalized
 
     def getWebInverterDevices(self, powerStationId):
         url_part = f"/sems-plant/api/stations/device/all-status?stationId={powerStationId}"
@@ -718,6 +904,10 @@ class GoodWeSEMSPlus(GoodWe):
 
     def getWebData(self, powerStationId):
         # Build the legacy-shaped data object from SEMS+ Web responses
+        centralized_inverters = self.getWebCentralizedPageInverters(powerStationId)
+        if centralized_inverters:
+            return {"inverter": centralized_inverters}
+
         inverters = []
         devices = self.getWebInverterDevices(powerStationId)
         for device in devices:

@@ -2,7 +2,9 @@ import unittest
 from GoodWe import GoodWe
 from GoodWe import PowerStation
 from GoodWe import Inverter
+from GoodWe import GoodWeSEMSPlus
 import logging
+from unittest.mock import patch
 
 
 class BasicInverterTest(unittest.TestCase):
@@ -147,6 +149,119 @@ class PowerStationTest(unittest.TestCase):
         self.powerStationSingle = None
         self.powerStationDouble = None
         self.powerStation = None
+
+
+class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
+    class _MockResponse:
+        def __init__(self, payload, status_code=200, url="https://example.invalid"):
+            self._payload = payload
+            self.status_code = status_code
+            self.url = url
+            self.text = str(payload)
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise Exception("HTTP {}".format(self.status_code))
+
+    def setUp(self):
+        self.account = GoodWeSEMSPlus("eu-gateway.semsportal.com", "443", "user", "password")
+        self.account.base_url = "https://eu-gateway.semsportal.com/web/sems"
+        self.account.token = {
+            "uid": "uid1",
+            "timestamp": 1,
+            "token": "secret-token",
+            "client": "semsPlusWeb",
+            "version": "",
+            "language": "en",
+            "region": "eu",
+        }
+
+    @patch("GoodWe.requests.post")
+    def test_station_data_web_fallback_is_wrapped_with_code_and_data(self, mock_post):
+        mock_post.return_value = self._MockResponse(
+            {"code": "00000", "data": {"inverter": []}}
+        )
+        with patch.object(
+            self.account,
+            "getWebData",
+            return_value={"inverter": [{"sn": "INV1", "status": 1}]},
+        ):
+            result = self.account.stationDataRequest("station-1")
+
+        self.assertEqual(result["code"], 0)
+        self.assertIn("data", result)
+        self.assertEqual(result["data"]["inverter"][0]["sn"], "INV1")
+
+    @patch("GoodWe.requests.post")
+    def test_centralized_page_response_is_normalized(self, mock_post):
+        mock_post.return_value = self._MockResponse(
+            {
+                "code": "00000",
+                "data": {
+                    "dataList": [
+                        {
+                            "id": "station-1",
+                            "children": [
+                                {
+                                    "deviceType": "INVERTER",
+                                    "sn": "INV1",
+                                    "status": 1,
+                                    "faultMessage": "",
+                                    "temperature": "22.5",
+                                    "fac": "50.1",
+                                    "Iac": "1.5",
+                                    "Vac": "230.4",
+                                    "pAc": "2.3",
+                                    "Vpv1": "350",
+                                    "Ipv1": "4.2",
+                                    "proToday": "5.1",
+                                    "proTotal": "1234.5",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = self.account.getWebCentralizedPageInverters("station-1")
+
+        self.assertEqual(len(result), 1)
+        inverter = result[0]
+        self.assertEqual(inverter["sn"], "INV1")
+        self.assertEqual(inverter["status"], 1)
+        self.assertEqual(inverter["output_power"], 2300.0)
+        self.assertEqual(inverter["pv_input_1"], "350.0V/4.2A")
+        self.assertEqual(inverter["etotal"], 1234.5)
+
+    def test_web_data_falls_back_to_legacy_web_endpoints(self):
+        with patch.object(
+            self.account, "getWebCentralizedPageInverters", return_value=[]
+        ), patch.object(
+            self.account,
+            "getWebInverterDevices",
+            return_value=[{"sn": "INV2", "deviceType": "INVERTER", "status": 1}],
+        ), patch.object(
+            self.account,
+            "getWebInverterTelemetry",
+            return_value={
+                "tempperature": 23.0,
+                "d": {"fac1": 50.0},
+                "output_current": 2.0,
+                "output_voltage": 230.0,
+                "output_power": 2000.0,
+                "pv_input_1": "100.0V/1.0A",
+            },
+        ), patch.object(
+            self.account, "getWebInverterTelecounting", return_value={"etotal": 10.0}
+        ):
+            result = self.account.getWebData("station-1")
+
+        self.assertEqual(result["inverter"][0]["sn"], "INV2")
+        self.assertEqual(result["inverter"][0]["etotal"], 10.0)
 
 
 def main():
