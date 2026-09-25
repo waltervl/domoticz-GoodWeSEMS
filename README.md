@@ -11,8 +11,8 @@ Per version 5 (May 2026), I've updated the plugin to use the new SEMS+ server as
 
 SEMS+ endpoint note (issue #36)
 ----------------------
-To handle recent SEMS+ authorization and API changes, station polling now prefers the SEMS+ `sems-plant/api/web/device/centralized/page` endpoint and normalizes that response to the legacy inverter shape used by the plugin.  
-If centralized/page does not return usable inverter data, the plugin falls back to the existing SEMS+ web all-status/telemetry/telecounting calls. The legacy PowerStation endpoint is still attempted first for compatibility.
+To handle recent SEMS+ authorization and API changes, station polling first tries the legacy PowerStation monitor endpoint for compatibility.  
+When that endpoint does not return usable inverter data, the plugin falls back to SEMS+ `sems-plant/api/web/device/centralized/page`, normalizes that response to the legacy inverter shape used by the plugin, and then falls back again to the existing SEMS+ web all-status/telemetry/telecounting calls if needed.
 
 Important update note (v4)
 ----------------------

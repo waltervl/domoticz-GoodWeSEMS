@@ -772,10 +772,7 @@ class GoodWeSEMSPlus(GoodWe):
                 total = self._safe_int(total, 0)
 
             total_for_page = self._safe_int(total, 0)
-            if raw_page_record_count is None and powerStationId and total_for_page > 0:
-                page_record_count = size
-            else:
-                page_record_count = self._safe_int(raw_page_record_count, len(nodes))
+            page_record_count = self._safe_int(raw_page_record_count, len(nodes))
 
             root_nodes = nodes
             if powerStationId:

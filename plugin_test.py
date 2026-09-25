@@ -245,6 +245,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
                     "code": "00000",
                     "data": {
                         "total": 60,
+                        "records": 50,
                         "dataList": [
                             {
                                 "id": "station-1",
@@ -261,6 +262,7 @@ class GoodWeSEMSPlusWebDataTest(unittest.TestCase):
                     "code": "00000",
                     "data": {
                         "total": 60,
+                        "records": 10,
                         "dataList": [
                             {
                                 "id": "station-1",
